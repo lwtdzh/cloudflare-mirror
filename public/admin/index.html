@@ -132,7 +132,7 @@ async function attemptLogin() {
     return;
   }
   try {
-    const res = await fetch(API, {
+    const res = await fetch(API + '?verify', {
       headers: { 'X-Admin-Password': password },
     });
     if (res.status === 401 || res.status === 403) {
@@ -182,7 +182,7 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
   const stored = getStoredPassword();
   if (!stored) return;
   try {
-    const res = await fetch(API, { headers: { 'X-Admin-Password': stored } });
+    const res = await fetch(API + '?verify', { headers: { 'X-Admin-Password': stored } });
     if (res.ok) {
       adminPassword = stored;
       mirrors = await res.json();

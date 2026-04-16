@@ -59,10 +59,13 @@ export async function onRequest(context) {
   }
 
   try {
-    // GET /api/mirrors - list all mirrors (requires password)
+    // GET /api/mirrors - list all mirrors (public)
+    // If "verify" query param is present, also verify the admin password (used by admin login)
     if (request.method === 'GET') {
-      const authError = verifyPassword(request, env, corsHeaders);
-      if (authError) return authError;
+      if (url.searchParams.has('verify')) {
+        const authError = verifyPassword(request, env, corsHeaders);
+        if (authError) return authError;
+      }
 
       const list = await listAllMirrors(env.MIRRORS_KV);
       return new Response(JSON.stringify(list), {
