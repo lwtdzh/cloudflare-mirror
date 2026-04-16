@@ -96,8 +96,8 @@ function renderTable() {
     const escOrig = m.originalPath.replace(/'/g, "\\'");
     const escDel = m.delegatedPath.replace(/'/g, "\\'");
     return `<tr>
-      <td><code style="color:#79c0ff">${m.originalPath}</code></td>
-      <td><code style="color:#a5d6ff;font-size:12px">${m.delegatedPath}</code></td>
+      <td><a href="/${m.originalPath}" style="color:#79c0ff;text-decoration:none;font-weight:600" title="Visit /${m.originalPath}">${m.originalPath}</a></td>
+      <td><a href="${m.delegatedPath}" style="color:#a5d6ff;font-size:12px;text-decoration:none" title="Visit delegated site">${m.delegatedPath}</a></td>
       <td>
         <button class="btn btn-edit" style="padding:6px 12px;font-size:12px" onclick="openEditModal('${escOrig}','${escDel}')">Edit</button>
         <button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="deleteMirror('${escOrig}')">Delete</button>

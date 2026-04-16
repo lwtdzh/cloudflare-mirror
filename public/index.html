@@ -50,8 +50,8 @@ function renderTable(mirrors) {
     return;
   }
   body.innerHTML = sorted.map(m => `<tr>
-    <td><a class="mirror-link" href="/${m.originalPath}">${m.originalPath}</a></td>
-    <td><code style="color:#a5d6ff;font-size:12px">${m.delegatedPath}</code></td>
+    <td><a class="mirror-link" href="/${m.originalPath}">/${m.originalPath}</a></td>
+    <td><a href="${m.delegatedPath}" target="_blank" style="color:#a5d6ff;font-size:12px;text-decoration:none">${m.delegatedPath}</a></td>
   </tr>`).join('');
 }
 
