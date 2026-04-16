@@ -46,6 +46,19 @@ tr:hover { background: #1c2128; }
 .login-box input:focus { outline: none; border-color: #58a6ff; }
 .login-error { color: #f85149; font-size: 13px; margin-bottom: 12px; display: none; }
 .admin-content { display: none; }
+/* Help modal */
+.help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 150; justify-content: center; align-items: center; }
+.help-overlay.active { display: flex; }
+.help-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; width: 90%; max-width: 560px; position: relative; max-height: 80vh; overflow-y: auto; }
+.help-box h2 { color: #58a6ff; margin-bottom: 16px; }
+.help-box .close-btn { position: absolute; top: 12px; right: 16px; background: none; border: none; color: #8b949e; font-size: 22px; cursor: pointer; line-height: 1; }
+.help-box .close-btn:hover { color: #f0f6fc; }
+.help-box p, .help-box li { color: #c9d1d9; font-size: 14px; line-height: 1.7; }
+.help-box ul { padding-left: 20px; margin: 8px 0; }
+.help-box .example { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-family: monospace; font-size: 13px; color: #a5d6ff; }
+.help-box h3 { color: #8b949e; font-size: 14px; margin-top: 16px; margin-bottom: 6px; }
+.btn-help { background: #30363d; color: #c9d1d9; border: 1px solid #444c56; padding: 8px 14px; font-size: 13px; }
+.btn-help:hover { background: #444c56; }
 </style>
 </head>
 <body>
@@ -72,12 +85,38 @@ tr:hover { background: #1c2128; }
     </div>
     <div class="actions">
       <button class="btn btn-primary" onclick="openAddModal()">+ Add Mirror</button>
-      <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-help" onclick="openHelp()">❓ Help</button>
+        <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
+      </div>
     </div>
     <table id="mirrorTable">
-      <thead><tr><th>Original Path</th><th>Delegated Path</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Sub Path</th><th>Delegated Path</th><th>Actions</th></tr></thead>
       <tbody id="mirrorBody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-box">
+    <button class="close-btn" onclick="closeHelp()">✕</button>
+    <h2>📖 Instructions / 使用说明</h2>
+    <p><strong>Mirror Admin</strong> lets you create URL mirrors. Each mirror maps a <strong>Sub Path</strong> on this site to a <strong>Delegated Path</strong> (the real URL).</p>
+    <p><strong>镜像管理</strong>可以创建 URL 镜像。每个镜像将本站的一个<strong>子路径（Sub Path）</strong>映射到一个<strong>目标地址（Delegated Path）</strong>。</p>
+    <h3>Example / 示例</h3>
+    <div class="example">
+      Sub Path: <strong>my-tool</strong><br>
+      Delegated Path: <strong>https://github.com/user/repo/releases/latest/download/tool.zip</strong>
+    </div>
+    <p>After saving, visiting <code>https://lwtmirror.pages.dev/my-tool</code> will proxy the content from the delegated URL.</p>
+    <p>保存后，访问 <code>https://lwtmirror.pages.dev/my-tool</code> 将会代理目标地址的内容。</p>
+    <h3>Tips / 提示</h3>
+    <ul>
+      <li><strong>Sub Path</strong> must be unique — duplicates will be rejected.<br>子路径必须唯一，重复的会被拒绝。</li>
+      <li>A default path with the current date-time is auto-filled when adding.<br>添加时会自动填入当前日期时间作为默认路径。</li>
+      <li>You can edit or delete any mirror at any time.<br>你可以随时编辑或删除任何镜像。</li>
+    </ul>
   </div>
 </div>
 
@@ -86,8 +125,8 @@ tr:hover { background: #1c2128; }
     <h2 id="modalTitle">Add Mirror</h2>
     <input type="hidden" id="editOldOriginalPath">
     <div class="form-group">
-      <label>Original Path (e.g. "def2")</label>
-      <input type="text" id="originalPath" placeholder="def2">
+      <label>Sub Path (e.g. "my-app")</label>
+      <input type="text" id="originalPath" placeholder="my-app">
     </div>
     <div class="form-group">
       <label>Delegated Path (e.g. "http://x.y/abc/def")</label>
@@ -250,6 +289,9 @@ function openEditModal(orig, deleg) {
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+function openHelp() { document.getElementById('helpOverlay').classList.add('active'); }
+function closeHelp() { document.getElementById('helpOverlay').classList.remove('active'); }
 
 async function saveMirror() {
   const oldOriginalPath = document.getElementById('editOldOriginalPath').value;
