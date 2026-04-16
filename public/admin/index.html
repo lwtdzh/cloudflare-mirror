@@ -227,10 +227,16 @@ function renderTable() {
   }).join('');
 }
 
+function generateDefaultPath() {
+  const now = new Date();
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
 function openAddModal() {
   document.getElementById('modalTitle').textContent = 'Add Mirror';
   document.getElementById('editOldOriginalPath').value = '';
-  document.getElementById('originalPath').value = '';
+  document.getElementById('originalPath').value = generateDefaultPath();
   document.getElementById('delegatedPath').value = '';
   document.getElementById('modalOverlay').classList.add('active');
 }
