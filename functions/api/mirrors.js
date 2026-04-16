@@ -1,9 +1,11 @@
+const MIRROR_KEY_PREFIX = 'mirror::';
+
 /**
- * Verify the admin password from the request against the one stored in KV.
- * Password is stored in KV under key "admin_password" — set it via
- * Cloudflare dashboard or `wrangler kv:key put --binding MIRRORS_KV "admin_password" "your-password"`.
+ * Verify the admin password from the request against the environment variable.
+ * Password is set via Cloudflare Pages environment variables (ADMIN_PASSWORD),
+ * so it never appears in source code or KV.
  */
-async function verifyPassword(request, env, corsHeaders) {
+function verifyPassword(request, env, corsHeaders) {
   const authHeader = request.headers.get('X-Admin-Password') || '';
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Password required' }), {
@@ -11,7 +13,7 @@ async function verifyPassword(request, env, corsHeaders) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-  const storedPassword = await env.MIRRORS_KV.get('admin_password');
+  const storedPassword = env.ADMIN_PASSWORD;
   if (!storedPassword || authHeader !== storedPassword) {
     return new Response(JSON.stringify({ error: 'Invalid password' }), {
       status: 403,
@@ -19,6 +21,27 @@ async function verifyPassword(request, env, corsHeaders) {
     });
   }
   return null; // password is valid
+}
+
+/**
+ * List all mirrors from KV. Each mirror is stored as a separate KV entry:
+ *   key: "mirror::{originalPath}"  →  value: "{delegatedPath}"
+ */
+async function listAllMirrors(kv) {
+  const mirrors = [];
+  let cursor = undefined;
+  do {
+    const result = await kv.list({ prefix: MIRROR_KEY_PREFIX, cursor });
+    for (const key of result.keys) {
+      const originalPath = key.name.slice(MIRROR_KEY_PREFIX.length);
+      const delegatedPath = await kv.get(key.name);
+      if (delegatedPath !== null) {
+        mirrors.push({ originalPath, delegatedPath });
+      }
+    }
+    cursor = result.list_complete ? undefined : result.cursor;
+  } while (cursor);
+  return mirrors;
 }
 
 export async function onRequest(context) {
@@ -38,10 +61,10 @@ export async function onRequest(context) {
   try {
     // GET /api/mirrors - list all mirrors (requires password)
     if (request.method === 'GET') {
-      const authError = await verifyPassword(request, env, corsHeaders);
+      const authError = verifyPassword(request, env, corsHeaders);
       if (authError) return authError;
 
-      const list = await env.MIRRORS_KV.get('mirror_list', { type: 'json' }) || [];
+      const list = await listAllMirrors(env.MIRRORS_KV);
       return new Response(JSON.stringify(list), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -49,7 +72,7 @@ export async function onRequest(context) {
 
     // POST /api/mirrors - add a new mirror
     if (request.method === 'POST') {
-      const authError = await verifyPassword(request, env, corsHeaders);
+      const authError = verifyPassword(request, env, corsHeaders);
       if (authError) return authError;
 
       const body = await request.json();
@@ -67,17 +90,16 @@ export async function onRequest(context) {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const list = await env.MIRRORS_KV.get('mirror_list', { type: 'json' }) || [];
       // Check for duplicate originalPath
-      if (list.some(m => m.originalPath === originalPath)) {
+      const existing = await env.MIRRORS_KV.get(MIRROR_KEY_PREFIX + originalPath);
+      if (existing !== null) {
         return new Response(JSON.stringify({ error: 'A mirror with originalPath "' + originalPath + '" already exists' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      await env.MIRRORS_KV.put(MIRROR_KEY_PREFIX + originalPath, delegatedPath);
       const mirror = { originalPath, delegatedPath };
-      list.push(mirror);
-      await env.MIRRORS_KV.put('mirror_list', JSON.stringify(list));
       return new Response(JSON.stringify(mirror), {
         status: 201,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -86,7 +108,7 @@ export async function onRequest(context) {
 
     // PUT /api/mirrors - update a mirror
     if (request.method === 'PUT') {
-      const authError = await verifyPassword(request, env, corsHeaders);
+      const authError = verifyPassword(request, env, corsHeaders);
       if (authError) return authError;
 
       const body = await request.json();
@@ -96,37 +118,37 @@ export async function onRequest(context) {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const list = await env.MIRRORS_KV.get('mirror_list', { type: 'json' }) || [];
-      const index = list.findIndex(m => m.originalPath === body.oldOriginalPath);
-      if (index === -1) {
+      const oldKey = MIRROR_KEY_PREFIX + body.oldOriginalPath;
+      const oldValue = await env.MIRRORS_KV.get(oldKey);
+      if (oldValue === null) {
         return new Response(JSON.stringify({ error: 'Mirror not found' }), {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       const newOriginalPath = body.originalPath.replace(/^\/+|\/+$/g, '');
+      const newDelegatedPath = body.delegatedPath.replace(/\/+$/, '');
       // Check for duplicate originalPath when the path is being changed
       if (newOriginalPath !== body.oldOriginalPath) {
-        if (list.some(m => m.originalPath === newOriginalPath)) {
+        const duplicateCheck = await env.MIRRORS_KV.get(MIRROR_KEY_PREFIX + newOriginalPath);
+        if (duplicateCheck !== null) {
           return new Response(JSON.stringify({ error: 'A mirror with originalPath "' + newOriginalPath + '" already exists' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
+        // Delete old key, write new key
+        await env.MIRRORS_KV.delete(oldKey);
       }
-      list[index] = {
-        originalPath: newOriginalPath,
-        delegatedPath: body.delegatedPath.replace(/\/+$/, ''),
-      };
-      await env.MIRRORS_KV.put('mirror_list', JSON.stringify(list));
-      return new Response(JSON.stringify(list[index]), {
+      await env.MIRRORS_KV.put(MIRROR_KEY_PREFIX + newOriginalPath, newDelegatedPath);
+      return new Response(JSON.stringify({ originalPath: newOriginalPath, delegatedPath: newDelegatedPath }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // DELETE /api/mirrors?originalPath=xxx - delete a mirror
     if (request.method === 'DELETE') {
-      const authError = await verifyPassword(request, env, corsHeaders);
+      const authError = verifyPassword(request, env, corsHeaders);
       if (authError) return authError;
 
       const originalPath = url.searchParams.get('originalPath');
@@ -136,15 +158,15 @@ export async function onRequest(context) {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const list = await env.MIRRORS_KV.get('mirror_list', { type: 'json' }) || [];
-      const newList = list.filter(m => m.originalPath !== originalPath);
-      if (newList.length === list.length) {
+      const key = MIRROR_KEY_PREFIX + originalPath;
+      const existing = await env.MIRRORS_KV.get(key);
+      if (existing === null) {
         return new Response(JSON.stringify({ error: 'Mirror not found' }), {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      await env.MIRRORS_KV.put('mirror_list', JSON.stringify(newList));
+      await env.MIRRORS_KV.delete(key);
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

@@ -158,24 +158,29 @@ function rewriteContent(content, mirrorEntry, requestUrl, contentType) {
   return result;
 }
 
+const MIRROR_KEY_PREFIX = 'mirror::';
+
 /**
  * Find which mirror entry matches the given request path.
+ * Each mirror is stored as a separate KV entry: "mirror::{originalPath}" → "delegatedPath".
  * Returns the mirror entry and the remaining subpath.
  */
 async function findMirror(pathname, kv) {
-  const list = await kv.get('mirror_list', { type: 'json' });
-  if (!list || !Array.isArray(list)) return null;
+  const cleanPathname = pathname.replace(/^\/+/, '');
+  if (!cleanPathname) return null;
 
-  // Try longest path first for more specific matches
-  const sorted = [...list].sort((a, b) => b.originalPath.length - a.originalPath.length);
-
-  for (const entry of sorted) {
-    const cleanOriginal = entry.originalPath.replace(/^\/+/, '').replace(/\/+$/, '');
-    const cleanPathname = pathname.replace(/^\/+/, '');
-
-    if (cleanPathname === cleanOriginal || cleanPathname.startsWith(cleanOriginal + '/')) {
-      const subpath = cleanPathname.slice(cleanOriginal.length);
-      return { entry, subpath };
+  // Try progressively shorter path prefixes for longest-match-first behavior.
+  // e.g. for "a/b/c/d", try "a/b/c/d", then "a/b/c", then "a/b", then "a".
+  const segments = cleanPathname.split('/');
+  for (let length = segments.length; length > 0; length--) {
+    const candidate = segments.slice(0, length).join('/');
+    const delegatedPath = await kv.get(MIRROR_KEY_PREFIX + candidate);
+    if (delegatedPath !== null) {
+      const subpath = cleanPathname.slice(candidate.length);
+      return {
+        entry: { originalPath: candidate, delegatedPath },
+        subpath,
+      };
     }
   }
 
