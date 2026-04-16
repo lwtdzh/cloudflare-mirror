@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mirror Admin</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+.container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+h1 { text-align: center; color: #58a6ff; margin-bottom: 30px; font-size: 28px; }
+.actions { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+.btn-primary { background: #238636; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-danger { background: #da3633; color: #fff; }
+.btn-danger:hover { background: #f85149; }
+.btn-secondary { background: #30363d; color: #c9d1d9; border: 1px solid #444c56; }
+.btn-secondary:hover { background: #444c56; }
+.btn-edit { background: #1f6feb; color: #fff; }
+.btn-edit:hover { background: #388bfd; }
+table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 8px; overflow: hidden; }
+th { background: #21262d; color: #8b949e; text-align: left; padding: 12px 16px; font-weight: 600; }
+td { padding: 12px 16px; border-top: 1px solid #30363d; }
+td:last-child { text-align: right; }
+tr:hover { background: #1c2128; }
+.empty { text-align: center; padding: 40px; color: #8b949e; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; }
+.modal h2 { color: #58a6ff; margin-bottom: 20px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; color: #8b949e; margin-bottom: 6px; font-size: 13px; }
+.form-group input { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+.form-group input:focus { outline: none; border-color: #58a6ff; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; z-index: 200; font-size: 14px; transition: opacity 0.3s; }
+.toast-success { background: #238636; color: #fff; }
+.toast-error { background: #da3633; color: #fff; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Mirror Admin</h1>
+  <div class="actions">
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Mirror</button>
+    <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
+  </div>
+  <table id="mirrorTable">
+    <thead><tr><th>Original Path</th><th>Delegated Path</th><th>Actions</th></tr></thead>
+    <tbody id="mirrorBody"></tbody>
+  </table>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2 id="modalTitle">Add Mirror</h2>
+    <input type="hidden" id="editOldOriginalPath">
+    <div class="form-group">
+      <label>Original Path (e.g. "def2")</label>
+      <input type="text" id="originalPath" placeholder="def2">
+    </div>
+    <div class="form-group">
+      <label>Delegated Path (e.g. "http://x.y/abc/def")</label>
+      <input type="text" id="delegatedPath" placeholder="http://x.y/abc/def">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMirror()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/mirrors';
+let mirrors = [];
+
+async function loadMirrors() {
+  try {
+    const res = await fetch(API);
+    mirrors = await res.json();
+    renderTable();
+  } catch(e) { showToast('Failed to load mirrors: ' + e.message, 'error'); }
+}
+
+function renderTable() {
+  const body = document.getElementById('mirrorBody');
+  if (!mirrors.length) {
+    body.innerHTML = '<tr><td colspan="3" class="empty">No mirrors configured. Click "+ Add Mirror" to start.</td></tr>';
+    return;
+  }
+  body.innerHTML = mirrors.map(m => {
+    const escOrig = m.originalPath.replace(/'/g, "\\'");
+    const escDel = m.delegatedPath.replace(/'/g, "\\'");
+    return `<tr>
+      <td><code style="color:#79c0ff">${m.originalPath}</code></td>
+      <td><code style="color:#a5d6ff;font-size:12px">${m.delegatedPath}</code></td>
+      <td>
+        <button class="btn btn-edit" style="padding:6px 12px;font-size:12px" onclick="openEditModal('${escOrig}','${escDel}')">Edit</button>
+        <button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="deleteMirror('${escOrig}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add Mirror';
+  document.getElementById('editOldOriginalPath').value = '';
+  document.getElementById('originalPath').value = '';
+  document.getElementById('delegatedPath').value = '';
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function openEditModal(orig, deleg) {
+  document.getElementById('modalTitle').textContent = 'Edit Mirror';
+  document.getElementById('editOldOriginalPath').value = orig;
+  document.getElementById('originalPath').value = orig;
+  document.getElementById('delegatedPath').value = deleg;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+async function saveMirror() {
+  const oldOriginalPath = document.getElementById('editOldOriginalPath').value;
+  const originalPath = document.getElementById('originalPath').value.trim();
+  const delegatedPath = document.getElementById('delegatedPath').value.trim();
+  if (!originalPath || !delegatedPath) { showToast('Both fields are required', 'error'); return; }
+  try {
+    let res;
+    if (oldOriginalPath) {
+      // Edit mode: PUT
+      res = await fetch(API, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldOriginalPath, originalPath, delegatedPath }),
+      });
+    } else {
+      // Add mode: POST
+      res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ originalPath, delegatedPath }),
+      });
+    }
+    if (!res.ok) { const err = await res.json(); showToast(err.error || 'Failed', 'error'); return; }
+    closeModal();
+    await loadMirrors();
+    showToast(oldOriginalPath ? 'Mirror updated' : 'Mirror added', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteMirror(originalPath) {
+  if (!confirm('Delete mirror "' + originalPath + '"?')) return;
+  try {
+    const res = await fetch(API + '?originalPath=' + encodeURIComponent(originalPath), { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed to delete', 'error'); return; }
+    await loadMirrors();
+    showToast('Mirror deleted', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+loadMirrors();
+</script>
+</body>
+</html>

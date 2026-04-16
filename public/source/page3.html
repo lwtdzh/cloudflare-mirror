@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Page 3 - Details</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico">
+</head>
+<body>
+    <h1>Test Page 3 - Details</h1>
+    <nav>
+        <a href="index.html">Home</a> |
+        <a href="page2.html">Gallery</a>
+    </nav>
+    <main>
+        <p>Here are some details about our project.</p>
+        <p>Check out the <a href="page2.html">gallery</a> for images.</p>
+        <p style="background-image: url('bg-pattern.png'); padding: 20px;">
+            This paragraph has a background image set via CSS.
+        </p>
+        <iframe src="index.html" width="300" height="200"></iframe>
+    </main>
+    <script>
+        // Inline script with fetch to a relative path
+        fetch('data.json').then(r => r.json()).then(d => console.log(d));
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+This is a notes text file.
+It contains some links but these should NOT be replaced because
+this is a plain text file, not a web page that a browser would render.
+
+Here are some URLs mentioned in the text:
+- http://example.com/page1.html
+- https://another-site.org/resource.js
+- http://test.local/images/logo.png
+
+These are just references in a text document, similar to how a README
+might mention URLs. Since this file serves as text/plain content type,
+no link rewriting should occur.
+
+End of notes.

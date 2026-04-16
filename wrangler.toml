@@ -1,0 +1,6 @@
+name = "cloudflare-mirror"
+pages_build_output_dir = "./public"
+
+[[kv_namespaces]]
+binding = "MIRRORS_KV"
+id = "4e8d5eb245e14e0bbe09292ee525633a"

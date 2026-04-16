@@ -1,0 +1,21 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: url('bg-pattern.png') repeat;
+}
+nav {
+    background: #333;
+    padding: 10px;
+}
+nav a {
+    color: white;
+    text-decoration: none;
+}
+main {
+    padding: 20px;
+}
+img {
+    max-width: 200px;
+    border: 1px solid #ccc;
+}
