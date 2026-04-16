@@ -1,45 +1,18 @@
 /**
  * Catch-all proxy function for Cloudflare Pages.
  * Matches paths against mirror rules in KV, fetches from the delegated path,
- * and rewrites links in HTML/JS responses to fit the proxy address.
+ * and rewrites links in HTML/JS/CSS responses to fit the proxy address.
  */
 
-const HTML_CONTENT_TYPES = [
-  'text/html',
-  'application/xhtml+xml',
-];
-
-const JS_CONTENT_TYPES = [
-  'text/javascript',
-  'application/javascript',
-  'application/x-javascript',
-];
-
-const CSS_CONTENT_TYPES = [
-  'text/css',
-];
-
-const TEXT_CONTENT_TYPES = [
-  'text/html',
-  'text/javascript',
-  'application/javascript',
-  'application/x-javascript',
-  'text/css',
-  'text/xml',
-  'application/xhtml+xml',
-  'application/xml',
-];
-
-function isTextContentType(ct) {
-  if (!ct) return false;
-  const lower = ct.toLowerCase().split(';')[0].trim();
-  return TEXT_CONTENT_TYPES.includes(lower);
-}
+const HTML_CONTENT_TYPES = ['text/html', 'application/xhtml+xml'];
+const JS_CONTENT_TYPES = ['text/javascript', 'application/javascript', 'application/x-javascript'];
+const CSS_CONTENT_TYPES = ['text/css'];
+const REWRITABLE_TYPES = [...HTML_CONTENT_TYPES, ...JS_CONTENT_TYPES, ...CSS_CONTENT_TYPES];
 
 function isRewritableContentType(ct) {
   if (!ct) return false;
   const lower = ct.toLowerCase().split(';')[0].trim();
-  return HTML_CONTENT_TYPES.includes(lower) || JS_CONTENT_TYPES.includes(lower) || CSS_CONTENT_TYPES.includes(lower);
+  return REWRITABLE_TYPES.includes(lower);
 }
 
 function isHTMLContentType(ct) {
@@ -48,10 +21,8 @@ function isHTMLContentType(ct) {
   return HTML_CONTENT_TYPES.includes(lower);
 }
 
-function isJSContentType(ct) {
-  if (!ct) return false;
-  const lower = ct.toLowerCase().split(';')[0].trim();
-  return JS_CONTENT_TYPES.includes(lower);
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -59,100 +30,68 @@ function isJSContentType(ct) {
  * are converted to point to the proxy path instead.
  */
 function rewriteContent(content, mirrorEntry, requestUrl, contentType) {
-  const { originalPath, delegatedUrl } = mirrorEntry;
+  const { originalPath, delegatedPath } = mirrorEntry;
 
-  // Parse the delegated URL to get its origin
-  let delegatedOrigin;
+  // Parse the delegated URL
+  let delegatedParsed;
   try {
-    const u = new URL(delegatedUrl);
-    delegatedOrigin = u.origin; // e.g. "https://x.y"
+    delegatedParsed = new URL(delegatedPath);
   } catch (e) {
+    // delegatedPath might be just a path without origin, e.g. "/abc/def"
+    // In that case, we can't rewrite full URLs but can still rewrite paths
     return content;
+  }
+
+  const delegatedOrigin = delegatedParsed.origin;
+  let delegatedPathPrefix = delegatedParsed.pathname;
+  if (delegatedPathPrefix.endsWith('/') && delegatedPathPrefix !== '/') {
+    delegatedPathPrefix = delegatedPathPrefix.slice(0, -1);
   }
 
   // Parse the request URL to get our origin
   let proxyOrigin;
   try {
-    const u = new URL(requestUrl);
-    proxyOrigin = u.origin; // e.g. "https://xx.pages.dev"
+    proxyOrigin = new URL(requestUrl).origin;
   } catch (e) {
     return content;
   }
 
-  // Compute the delegated path portion
-  // e.g. delegatedUrl = "http://x.y/abc/def" -> delegatedPathPrefix = "/abc/def"
-  let delegatedPathPrefix;
-  try {
-    const u = new URL(delegatedUrl);
-    delegatedPathPrefix = u.pathname;
-    // Remove trailing slash for consistent matching
-    if (delegatedPathPrefix.endsWith('/') && delegatedPathPrefix !== '/') {
-      delegatedPathPrefix = delegatedPathPrefix.slice(0, -1);
-    }
-  } catch (e) {
-    return content;
-  }
-
-  // The proxy path prefix (always starts with /)
-  // e.g. originalPath = "def2" -> proxyPathPrefix = "/def2"
   const proxyPathPrefix = '/' + originalPath.replace(/^\/+/, '');
-
-  const isHtml = isHTMLContentType(contentType);
-  const isJs = isJSContentType(contentType);
-
-  // We need to rewrite:
-  // 1. Full URLs: delegatedOrigin + delegatedPathPrefix + ... -> proxyOrigin + proxyPathPrefix + ...
-  // 2. Absolute paths starting with delegatedPathPrefix: /abc/def/... -> /def2/...
-  // 3. Relative paths that resolve to delegated origin (less common, but possible)
-
-  // Strategy: replace all occurrences of delegatedOrigin + delegatedPathPrefix and standalone delegatedPathPrefix
 
   let result = content;
 
-  // Replace full URLs first: "https://x.y/abc/def" -> "https://xx.pages.dev/def2"
-  // Handle both http and https versions of the delegated URL
-  const delegatedUrlNoProtocol = delegatedOrigin.replace(/^https?:\/\//, '') + delegatedPathPrefix;
-  const httpDelegatedOrigin = 'http://' + delegatedOrigin.replace(/^https?:\/\//, '');
-  const httpsDelegatedOrigin = 'https://' + delegatedOrigin.replace(/^https?:\/\//, '');
+  // 1. Replace full URLs with both http and https variants of the delegated origin
+  const domainPart = delegatedOrigin.replace(/^https?:\/\//, '');
+  const httpOrigin = 'http://' + domainPart;
+  const httpsOrigin = 'https://' + domainPart;
 
-  // Replace full URLs with protocol
-  // e.g. "https://x.y/abc/def" -> "https://xx.pages.dev/def2"
-  // e.g. "http://x.y/abc/def" -> "https://xx.pages.dev/def2" (always use https for pages.dev)
   result = result.replace(
-    new RegExp(escapeRegex(httpsDelegatedOrigin + delegatedPathPrefix), 'g'),
+    new RegExp(escapeRegex(httpsOrigin + delegatedPathPrefix), 'g'),
     proxyOrigin + proxyPathPrefix
   );
   result = result.replace(
-    new RegExp(escapeRegex(httpDelegatedOrigin + delegatedPathPrefix), 'g'),
+    new RegExp(escapeRegex(httpOrigin + delegatedPathPrefix), 'g'),
     proxyOrigin + proxyPathPrefix
   );
 
-  // Replace protocol-relative URLs: "//x.y/abc/def" -> "//xx.pages.dev/def2"
+  // 2. Replace protocol-relative URLs: "//domain/path" -> "//proxydomain/proxypath"
   result = result.replace(
-    new RegExp(escapeRegex('//' + delegatedOrigin.replace(/^https?:\/\//, '') + delegatedPathPrefix), 'g'),
+    new RegExp(escapeRegex('//' + domainPart + delegatedPathPrefix), 'g'),
     '//' + proxyOrigin.replace(/^https?:\/\//, '') + proxyPathPrefix
   );
 
-  // Replace absolute paths: "/abc/def" -> "/def2"
-  // Only if delegatedPathPrefix is not just "/" (i.e. there's a real path prefix)
-  if (delegatedPathPrefix !== '') {
+  // 3. Replace absolute paths: "/abc/def" -> "/def2"
+  // Only if there's a non-trivial path prefix (not just "/")
+  if (delegatedPathPrefix !== '' && delegatedPathPrefix !== '/') {
+    // Use word-boundary-like matching to avoid false replacements in unrelated paths
+    // e.g. replace "/source" but not "/resource" (when source is a prefix)
     result = result.replace(
-      new RegExp(escapeRegex(delegatedPathPrefix), 'g'),
+      new RegExp(escapeRegex(delegatedPathPrefix) + '(?=[/\\s"\'<>:,;?!&=()\\[\\]{}]|$)', 'g'),
       proxyPathPrefix
     );
   }
 
-  // For HTML, also handle srcset attributes which have special spacing
-  if (isHtml) {
-    // srcset patterns like "/abc/def/image.jpg 300w, /abc/def/image-large.jpg 600w"
-    // The above replacements should already handle these since we replaced the path prefix
-  }
-
   return result;
-}
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -164,7 +103,6 @@ async function findMirror(pathname, kv) {
   if (!list || !Array.isArray(list)) return null;
 
   // Try longest path first for more specific matches
-  // Sort by originalPath length descending
   const sorted = [...list].sort((a, b) => b.originalPath.length - a.originalPath.length);
 
   for (const entry of sorted) {
@@ -185,9 +123,15 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
-  // Skip admin and API paths
+  // Skip admin and API paths - let Pages handle them
   if (pathname === '/admin' || pathname === '/admin/' || pathname.startsWith('/admin/') ||
       pathname.startsWith('/api/')) {
+    return context.next();
+  }
+
+  // If this is a subrequest from our own proxy, skip mirroring to prevent infinite loops
+  // This handles the case where a mirror's delegatedPath points to our own Pages domain
+  if (request.headers.get('X-Mirror-Subrequest') === 'true') {
     return context.next();
   }
 
@@ -198,52 +142,59 @@ export async function onRequest(context) {
   }
 
   const { entry, subpath } = result;
-  let targetUrl;
 
+  // Build target URL from delegatedPath
+  let targetUrl;
   try {
-    const delegated = new URL(entry.delegatedUrl);
-    // Append subpath to delegated URL
+    const delegated = new URL(entry.delegatedPath);
     const basePath = delegated.pathname.replace(/\/+$/, '');
     targetUrl = delegated.origin + basePath + subpath;
-    // Preserve query string
     if (url.search) {
       targetUrl += url.search;
     }
   } catch (e) {
-    return new Response('Invalid delegated URL', { status: 500 });
+    return new Response('Invalid delegated URL: ' + e.message, { status: 500 });
   }
 
   // Fetch from target
   try {
-    const headers = new Headers(request.headers);
-    // Set the host header to match the target
+    const fetchHeaders = new Headers();
+
+    // Forward some client headers
+    const accept = request.headers.get('Accept');
+    const acceptLang = request.headers.get('Accept-Language');
+    const acceptEnc = request.headers.get('Accept-Encoding');
+    const userAgent = request.headers.get('User-Agent');
+    if (accept) fetchHeaders.set('Accept', accept);
+    if (acceptLang) fetchHeaders.set('Accept-Language', acceptLang);
+    if (acceptEnc) fetchHeaders.set('Accept-Encoding', acceptEnc);
+    if (userAgent) fetchHeaders.set('User-Agent', userAgent);
+
+    // Set appropriate headers for the target
     const targetParsed = new URL(targetUrl);
-    headers.set('Host', targetParsed.host);
-    headers.set('Referer', targetParsed.origin + targetParsed.pathname);
-    // Remove cloudflare-specific headers that might cause issues
-    headers.delete('cf-connecting-ip');
-    headers.delete('cf-ipcountry');
-    headers.delete('cf-ray');
-    headers.delete('cf-visitor');
+    fetchHeaders.set('Host', targetParsed.host);
+    fetchHeaders.set('Referer', targetParsed.origin + targetParsed.pathname);
+
+    // Mark as subrequest to prevent infinite loops when proxying to our own domain
+    fetchHeaders.set('X-Mirror-Subrequest', 'true');
 
     const response = await fetch(targetUrl, {
       method: request.method,
-      headers,
+      headers: fetchHeaders,
       body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
       redirect: 'follow',
     });
 
     const contentType = response.headers.get('Content-Type') || '';
 
-    // If rewritable content type, rewrite URLs
+    // If rewritable content type, rewrite URLs in the response
     if (isRewritableContentType(contentType)) {
       let body = await response.text();
       body = rewriteContent(body, entry, request.url, contentType);
 
       const newHeaders = new Headers(response.headers);
-      // Remove content-length since we modified the body
       newHeaders.delete('Content-Length');
-      // Ensure correct encoding
+      newHeaders.delete('Content-Encoding');
       newHeaders.set('Content-Type', contentType);
 
       return new Response(body, {
@@ -254,7 +205,6 @@ export async function onRequest(context) {
     }
 
     // For non-text content (images, binaries, etc.), pass through unchanged
-    // Clone response to avoid body-use issues
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
