@@ -78,10 +78,9 @@ export async function onRequest(context) {
     }
 
     // POST /api/mirrors - add a new mirror
+    // Guest users (no password) can only add paths starting with "guest-"
+    // Admin users (with password) can add any path
     if (request.method === 'POST') {
-      const authError = verifyPassword(request, env, corsHeaders);
-      if (authError) return authError;
-
       const body = await request.json();
       if (!body.originalPath || !body.delegatedPath) {
         return new Response(JSON.stringify({ error: 'originalPath and delegatedPath are required' }), {
@@ -97,10 +96,26 @@ export async function onRequest(context) {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+
+      const hasPassword = request.headers.get('X-Admin-Password');
+      if (!hasPassword || !hasPassword.trim()) {
+        // Guest mode: only allow paths starting with "guest-"
+        if (!originalPath.startsWith('guest-')) {
+          return new Response(JSON.stringify({ error: 'Guest users can only add paths starting with "guest-"' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } else {
+        // Admin mode: verify password
+        const authError = verifyPassword(request, env, corsHeaders);
+        if (authError) return authError;
+      }
+
       // Check for duplicate originalPath
       const existing = await env.MIRRORS_KV.get(MIRROR_KEY_PREFIX + originalPath);
       if (existing !== null) {
-        return new Response(JSON.stringify({ error: 'A mirror with originalPath "' + originalPath + '" already exists' }), {
+        return new Response(JSON.stringify({ error: 'A mirror with sub path "' + originalPath + '" already exists' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

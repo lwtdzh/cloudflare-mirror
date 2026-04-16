@@ -9,9 +9,17 @@
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
 .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
 h1 { text-align: center; color: #58a6ff; margin-bottom: 30px; font-size: 28px; }
-.admin-link { text-align: center; margin-bottom: 20px; }
-.admin-link a { color: #8b949e; font-size: 14px; text-decoration: none; }
-.admin-link a:hover { color: #58a6ff; }
+.top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.top-links { display: flex; gap: 12px; align-items: center; }
+.top-links a { color: #8b949e; font-size: 13px; text-decoration: none; }
+.top-links a:hover { color: #58a6ff; }
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+.btn-primary { background: #238636; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-secondary { background: #30363d; color: #c9d1d9; border: 1px solid #444c56; }
+.btn-secondary:hover { background: #444c56; }
+.btn-help { background: #30363d; color: #c9d1d9; border: 1px solid #444c56; padding: 8px 14px; font-size: 13px; }
+.btn-help:hover { background: #444c56; }
 table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 8px; overflow: hidden; }
 th { background: #21262d; color: #8b949e; text-align: left; padding: 12px 16px; font-weight: 600; }
 td { padding: 12px 16px; border-top: 1px solid #30363d; }
@@ -19,30 +27,117 @@ tr:hover { background: #1c2128; }
 .empty { text-align: center; padding: 40px; color: #8b949e; }
 .mirror-link { color: #79c0ff; text-decoration: none; font-weight: 600; }
 .mirror-link:hover { color: #a5d6ff; text-decoration: underline; }
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; }
+.modal h2 { color: #58a6ff; margin-bottom: 20px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; color: #8b949e; margin-bottom: 6px; font-size: 13px; }
+.form-group input { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+.form-group input:focus { outline: none; border-color: #58a6ff; }
+.prefix-input { display: flex; align-items: center; }
+.prefix-label { background: #21262d; border: 1px solid #30363d; border-right: none; border-radius: 6px 0 0 6px; padding: 10px 12px; color: #58a6ff; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.prefix-input input { border-radius: 0 6px 6px 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+/* Help modal */
+.help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 150; justify-content: center; align-items: center; }
+.help-overlay.active { display: flex; }
+.help-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; width: 90%; max-width: 560px; position: relative; max-height: 80vh; overflow-y: auto; }
+.help-box h2 { color: #58a6ff; margin-bottom: 16px; }
+.help-box .close-btn { position: absolute; top: 12px; right: 16px; background: none; border: none; color: #8b949e; font-size: 22px; cursor: pointer; line-height: 1; }
+.help-box .close-btn:hover { color: #f0f6fc; }
+.help-box p, .help-box li { color: #c9d1d9; font-size: 14px; line-height: 1.7; }
+.help-box ul { padding-left: 20px; margin: 8px 0; }
+.help-box .example { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-family: monospace; font-size: 13px; color: #a5d6ff; }
+.help-box h3 { color: #8b949e; font-size: 14px; margin-top: 16px; margin-bottom: 6px; }
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; z-index: 200; font-size: 14px; transition: opacity 0.3s; }
+.toast-success { background: #238636; color: #fff; }
+.toast-error { background: #da3633; color: #fff; }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>LWT's mirror site</h1>
-  <div class="admin-link"><a href="/admin/">Admin</a></div>
+  <div class="top-bar">
+    <button class="btn btn-primary" onclick="openGuestAddModal()">+ Add Mirror</button>
+    <div class="top-links">
+      <button class="btn btn-help" onclick="openHelp()">❓ Help</button>
+      <a href="/admin/">Admin</a>
+    </div>
+  </div>
   <table>
     <thead><tr><th>Sub Path</th><th>Delegated Path</th></tr></thead>
     <tbody id="mirrorBody"></tbody>
   </table>
 </div>
 
+<!-- Help Modal -->
+<div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-box">
+    <button class="close-btn" onclick="closeHelp()">✕</button>
+    <h2>📖 Instructions / 使用说明</h2>
+    <p><strong>Mirror Site</strong> lets you create URL mirrors. Each mirror maps a <strong>Sub Path</strong> on this site to a <strong>Delegated Path</strong> (the real URL).</p>
+    <p><strong>镜像站点</strong>可以创建 URL 镜像。每个镜像将本站的一个<strong>子路径（Sub Path）</strong>映射到一个<strong>目标地址（Delegated Path）</strong>。</p>
+    <h3>Example / 示例</h3>
+    <div class="example">
+      Sub Path: <strong>guest-my-tool</strong><br>
+      Delegated Path: <strong>https://github.com/user/repo/releases/latest/download/tool.zip</strong>
+    </div>
+    <p>After saving, visiting <code>https://lwtmirror.pages.dev/guest-my-tool</code> will proxy the content from the delegated URL.</p>
+    <p>保存后，访问 <code>https://lwtmirror.pages.dev/guest-my-tool</code> 将会代理目标地址的内容。</p>
+    <h3>Guest Rules / 访客规则</h3>
+    <ul>
+      <li>Guest users can only add mirrors with sub paths starting with <strong>"guest-"</strong>.<br>访客只能添加以 <strong>"guest-"</strong> 开头的子路径。</li>
+      <li>Guest users <strong>cannot edit or delete</strong> existing mirrors.<br>访客<strong>不能编辑或删除</strong>已有的镜像。</li>
+      <li>A default path with the current date-time is auto-filled for convenience.<br>为方便使用，添加时会自动填入当前日期时间作为默认路径。</li>
+      <li>Sub paths must be unique — duplicates will be rejected.<br>子路径必须唯一，重复的会被拒绝。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Guest Add Modal -->
+<div class="modal-overlay" id="guestModalOverlay">
+  <div class="modal">
+    <h2>Add Mirror (Guest)</h2>
+    <div class="form-group">
+      <label>Sub Path</label>
+      <div class="prefix-input">
+        <span class="prefix-label">guest-</span>
+        <input type="text" id="guestSubPath" placeholder="my-tool">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Delegated Path (e.g. "https://example.com/file.zip")</label>
+      <input type="text" id="guestDelegatedPath" placeholder="https://example.com/file.zip">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeGuestModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGuestMirror()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = '/api/mirrors';
+let mirrors = [];
+
+function generateDefaultSuffix() {
+  const now = new Date();
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
 
 async function loadMirrors() {
   try {
     const res = await fetch(API);
-    const mirrors = await res.json();
-    renderTable(mirrors);
+    mirrors = await res.json();
+    renderTable();
   } catch(e) { console.error('Failed to load mirrors:', e); }
 }
 
-function renderTable(mirrors) {
+function renderTable() {
   const body = document.getElementById('mirrorBody');
   const sorted = [...mirrors].sort((a, b) => a.originalPath.localeCompare(b.originalPath));
   if (!sorted.length) {
@@ -53,6 +148,49 @@ function renderTable(mirrors) {
     <td><a class="mirror-link" href="/${m.originalPath}">/${m.originalPath}</a></td>
     <td><a href="${m.delegatedPath}" target="_blank" style="color:#a5d6ff;font-size:12px;text-decoration:none">${m.delegatedPath}</a></td>
   </tr>`).join('');
+}
+
+function openHelp() { document.getElementById('helpOverlay').classList.add('active'); }
+function closeHelp() { document.getElementById('helpOverlay').classList.remove('active'); }
+
+function openGuestAddModal() {
+  document.getElementById('guestSubPath').value = generateDefaultSuffix();
+  document.getElementById('guestDelegatedPath').value = '';
+  document.getElementById('guestModalOverlay').classList.add('active');
+}
+
+function closeGuestModal() { document.getElementById('guestModalOverlay').classList.remove('active'); }
+
+async function saveGuestMirror() {
+  const suffix = document.getElementById('guestSubPath').value.trim();
+  const delegatedPath = document.getElementById('guestDelegatedPath').value.trim();
+  if (!suffix || !delegatedPath) { showToast('Both fields are required', 'error'); return; }
+  const originalPath = 'guest-' + suffix;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ originalPath, delegatedPath }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.error || 'Failed', 'error');
+      return;
+    }
+    const saved = await res.json();
+    closeGuestModal();
+    mirrors.push(saved);
+    renderTable();
+    showToast('Mirror added! Visit: /' + saved.originalPath, 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 loadMirrors();
