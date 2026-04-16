@@ -37,20 +37,48 @@ tr:hover { background: #1c2128; }
 .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; z-index: 200; font-size: 14px; transition: opacity 0.3s; }
 .toast-success { background: #238636; color: #fff; }
 .toast-error { background: #da3633; color: #fff; }
+/* Login screen */
+.login-screen { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.login-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 32px; width: 90%; max-width: 380px; text-align: center; }
+.login-box h2 { color: #58a6ff; margin-bottom: 8px; }
+.login-box p { color: #8b949e; font-size: 13px; margin-bottom: 24px; }
+.login-box input { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; margin-bottom: 16px; }
+.login-box input:focus { outline: none; border-color: #58a6ff; }
+.login-error { color: #f85149; font-size: 13px; margin-bottom: 12px; display: none; }
+.admin-content { display: none; }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>Mirror Admin</h1>
-  <div style="text-align:center;margin-bottom:16px"><a href="/" style="color:#8b949e;font-size:13px">Back to Mirror List</a></div>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="openAddModal()">+ Add Mirror</button>
-    <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
+
+<!-- Login Screen -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h2>🔒 Admin Login</h2>
+    <p>Enter the admin password to continue</p>
+    <div class="login-error" id="loginError"></div>
+    <input type="password" id="loginPassword" placeholder="Password" autofocus>
+    <button class="btn btn-primary" style="width:100%" onclick="attemptLogin()">Login</button>
   </div>
-  <table id="mirrorTable">
-    <thead><tr><th>Original Path</th><th>Delegated Path</th><th>Actions</th></tr></thead>
-    <tbody id="mirrorBody"></tbody>
-  </table>
+</div>
+
+<!-- Admin Content (hidden until login) -->
+<div class="admin-content" id="adminContent">
+  <div class="container">
+    <h1>Mirror Admin</h1>
+    <div style="text-align:center;margin-bottom:16px">
+      <a href="/" style="color:#8b949e;font-size:13px">Back to Mirror List</a>
+      <span style="margin:0 8px;color:#30363d">|</span>
+      <a href="#" style="color:#8b949e;font-size:13px" onclick="logout();return false">Logout</a>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="openAddModal()">+ Add Mirror</button>
+      <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
+    </div>
+    <table id="mirrorTable">
+      <thead><tr><th>Original Path</th><th>Delegated Path</th><th>Actions</th></tr></thead>
+      <tbody id="mirrorBody"></tbody>
+    </table>
+  </div>
 </div>
 
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
@@ -75,17 +103,110 @@ tr:hover { background: #1c2128; }
 <script>
 const API = '/api/mirrors';
 let mirrors = [];
+let adminPassword = '';
 
+// --- Login ---
+function getStoredPassword() {
+  return sessionStorage.getItem('admin_password') || '';
+}
+
+function storePassword(password) {
+  sessionStorage.setItem('admin_password', password);
+}
+
+function clearPassword() {
+  sessionStorage.removeItem('admin_password');
+}
+
+function authHeaders() {
+  return { 'X-Admin-Password': adminPassword };
+}
+
+async function attemptLogin() {
+  const passwordInput = document.getElementById('loginPassword');
+  const errorEl = document.getElementById('loginError');
+  const password = passwordInput.value;
+  if (!password) {
+    errorEl.textContent = 'Please enter a password';
+    errorEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch(API, {
+      headers: { 'X-Admin-Password': password },
+    });
+    if (res.status === 401 || res.status === 403) {
+      errorEl.textContent = 'Invalid password. Please try again.';
+      errorEl.style.display = 'block';
+      passwordInput.value = '';
+      passwordInput.focus();
+      return;
+    }
+    if (!res.ok) {
+      errorEl.textContent = 'Server error. Please try again later.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    adminPassword = password;
+    storePassword(password);
+    mirrors = await res.json();
+    showAdminContent();
+    renderTable();
+  } catch (e) {
+    errorEl.textContent = 'Connection error: ' + e.message;
+    errorEl.style.display = 'block';
+  }
+}
+
+function showAdminContent() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('adminContent').style.display = 'block';
+}
+
+function logout() {
+  adminPassword = '';
+  clearPassword();
+  document.getElementById('adminContent').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+// Allow pressing Enter on the password field to login
+document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') attemptLogin();
+});
+
+// --- Auto-login from session ---
+(async function autoLogin() {
+  const stored = getStoredPassword();
+  if (!stored) return;
+  try {
+    const res = await fetch(API, { headers: { 'X-Admin-Password': stored } });
+    if (res.ok) {
+      adminPassword = stored;
+      mirrors = await res.json();
+      showAdminContent();
+      renderTable();
+    } else {
+      clearPassword();
+    }
+  } catch (e) {
+    clearPassword();
+  }
+})();
+
+// --- Mirror CRUD ---
 async function loadMirrors() {
   try {
-    const res = await fetch(API);
+    const res = await fetch(API, { headers: authHeaders() });
+    if (res.status === 401 || res.status === 403) { logout(); showToast('Session expired. Please login again.', 'error'); return; }
     mirrors = await res.json();
     renderTable();
   } catch(e) { showToast('Failed to load mirrors: ' + e.message, 'error'); }
 }
 
 function renderTable() {
-  // Sort mirrors alphabetically by originalPath
   const sorted = [...mirrors].sort((a, b) => a.originalPath.localeCompare(b.originalPath));
   const body = document.getElementById('mirrorBody');
   if (!mirrors.length) {
@@ -132,21 +253,24 @@ async function saveMirror() {
   try {
     let res;
     if (oldOriginalPath) {
-      // Edit mode: PUT
       res = await fetch(API, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ oldOriginalPath, originalPath, delegatedPath }),
       });
     } else {
-      // Add mode: POST
       res = await fetch(API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ originalPath, delegatedPath }),
       });
     }
-    if (!res.ok) { const err = await res.json(); showToast(err.error || 'Failed', 'error'); return; }
+    if (res.status === 401 || res.status === 403) { logout(); showToast('Session expired. Please login again.', 'error'); return; }
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.error || 'Failed', 'error');
+      return;
+    }
     closeModal();
     await loadMirrors();
     showToast(oldOriginalPath ? 'Mirror updated' : 'Mirror added', 'success');
@@ -156,7 +280,11 @@ async function saveMirror() {
 async function deleteMirror(originalPath) {
   if (!confirm('Delete mirror "' + originalPath + '"?')) return;
   try {
-    const res = await fetch(API + '?originalPath=' + encodeURIComponent(originalPath), { method: 'DELETE' });
+    const res = await fetch(API + '?originalPath=' + encodeURIComponent(originalPath), {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (res.status === 401 || res.status === 403) { logout(); showToast('Session expired. Please login again.', 'error'); return; }
     if (!res.ok) { showToast('Failed to delete', 'error'); return; }
     await loadMirrors();
     showToast('Mirror deleted', 'success');
@@ -170,8 +298,6 @@ function showToast(msg, type) {
   document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
 }
-
-loadMirrors();
 </script>
 </body>
 </html>

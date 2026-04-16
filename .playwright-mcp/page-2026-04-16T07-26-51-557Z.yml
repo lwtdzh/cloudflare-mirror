@@ -1,0 +1,24 @@
+- generic [ref=e2]:
+  - heading "Mirror Admin" [level=1] [ref=e3]
+  - link "Back to Mirror List" [ref=e5] [cursor=pointer]:
+    - /url: /
+  - generic [ref=e6]:
+    - button "+ Add Mirror" [ref=e7] [cursor=pointer]
+    - button "Refresh" [ref=e8] [cursor=pointer]
+  - table [ref=e9]:
+    - rowgroup [ref=e10]:
+      - row "Original Path Delegated Path Actions" [ref=e11]:
+        - columnheader "Original Path" [ref=e12]
+        - columnheader "Delegated Path" [ref=e13]
+        - columnheader "Actions" [ref=e14]
+    - rowgroup [ref=e15]:
+      - row "cloudflared-linux-amd64 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 Edit Delete" [ref=e16]:
+        - cell "cloudflared-linux-amd64" [ref=e17]:
+          - link "cloudflared-linux-amd64" [active] [ref=e18] [cursor=pointer]:
+            - /url: /cloudflared-linux-amd64
+        - cell "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" [ref=e19]:
+          - link "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" [ref=e20] [cursor=pointer]:
+            - /url: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+        - cell "Edit Delete" [ref=e21]:
+          - button "Edit" [ref=e22] [cursor=pointer]
+          - button "Delete" [ref=e23] [cursor=pointer]
