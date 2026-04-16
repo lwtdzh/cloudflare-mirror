@@ -1,4 +1,5 @@
 const MIRROR_KEY_PREFIX = 'mirror::';
+const MIRROR_INDEX_KEY = 'mirror_index';
 
 /**
  * Verify the admin password from the request against the environment variable.
@@ -24,23 +25,27 @@ function verifyPassword(request, env, corsHeaders) {
 }
 
 /**
- * List all mirrors from KV. Each mirror is stored as a separate KV entry:
- *   key: "mirror::{originalPath}"  →  value: "{delegatedPath}"
+ * Get the mirror index — a list of all originalPaths stored in KV.
+ * This is immediately consistent (unlike kv.list() which is eventually consistent).
+ */
+async function getMirrorIndex(kv) {
+  return await kv.get(MIRROR_INDEX_KEY, { type: 'json' }) || [];
+}
+
+/**
+ * List all mirrors by reading the index and then fetching each entry individually.
+ * Each mirror's delegatedPath is stored as: "mirror::{originalPath}" → "{delegatedPath}"
+ * The index stores just the list of originalPaths for immediate consistency.
  */
 async function listAllMirrors(kv) {
+  const index = await getMirrorIndex(kv);
   const mirrors = [];
-  let cursor = undefined;
-  do {
-    const result = await kv.list({ prefix: MIRROR_KEY_PREFIX, cursor });
-    for (const key of result.keys) {
-      const originalPath = key.name.slice(MIRROR_KEY_PREFIX.length);
-      const delegatedPath = await kv.get(key.name);
-      if (delegatedPath !== null) {
-        mirrors.push({ originalPath, delegatedPath });
-      }
+  for (const originalPath of index) {
+    const delegatedPath = await kv.get(MIRROR_KEY_PREFIX + originalPath);
+    if (delegatedPath !== null) {
+      mirrors.push({ originalPath, delegatedPath });
     }
-    cursor = result.list_complete ? undefined : result.cursor;
-  } while (cursor);
+  }
   return mirrors;
 }
 
@@ -101,7 +106,11 @@ export async function onRequest(context) {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      // Write the mirror entry and update the index
       await env.MIRRORS_KV.put(MIRROR_KEY_PREFIX + originalPath, delegatedPath);
+      const index = await getMirrorIndex(env.MIRRORS_KV);
+      index.push(originalPath);
+      await env.MIRRORS_KV.put(MIRROR_INDEX_KEY, JSON.stringify(index));
       const mirror = { originalPath, delegatedPath };
       return new Response(JSON.stringify(mirror), {
         status: 201,
@@ -140,8 +149,12 @@ export async function onRequest(context) {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        // Delete old key, write new key
+        // Delete old key and update index
         await env.MIRRORS_KV.delete(oldKey);
+        const index = await getMirrorIndex(env.MIRRORS_KV);
+        const updatedIndex = index.filter(p => p !== body.oldOriginalPath);
+        updatedIndex.push(newOriginalPath);
+        await env.MIRRORS_KV.put(MIRROR_INDEX_KEY, JSON.stringify(updatedIndex));
       }
       await env.MIRRORS_KV.put(MIRROR_KEY_PREFIX + newOriginalPath, newDelegatedPath);
       return new Response(JSON.stringify({ originalPath: newOriginalPath, delegatedPath: newDelegatedPath }), {
@@ -170,6 +183,10 @@ export async function onRequest(context) {
         });
       }
       await env.MIRRORS_KV.delete(key);
+      // Update the index
+      const index = await getMirrorIndex(env.MIRRORS_KV);
+      const updatedIndex = index.filter(p => p !== originalPath);
+      await env.MIRRORS_KV.put(MIRROR_INDEX_KEY, JSON.stringify(updatedIndex));
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
