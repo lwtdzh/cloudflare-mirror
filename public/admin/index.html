@@ -42,6 +42,7 @@ tr:hover { background: #1c2128; }
 <body>
 <div class="container">
   <h1>Mirror Admin</h1>
+  <div style="text-align:center;margin-bottom:16px"><a href="/" style="color:#8b949e;font-size:13px">Back to Mirror List</a></div>
   <div class="actions">
     <button class="btn btn-primary" onclick="openAddModal()">+ Add Mirror</button>
     <button class="btn btn-secondary" onclick="loadMirrors()">Refresh</button>
@@ -84,12 +85,14 @@ async function loadMirrors() {
 }
 
 function renderTable() {
+  // Sort mirrors alphabetically by originalPath
+  const sorted = [...mirrors].sort((a, b) => a.originalPath.localeCompare(b.originalPath));
   const body = document.getElementById('mirrorBody');
   if (!mirrors.length) {
     body.innerHTML = '<tr><td colspan="3" class="empty">No mirrors configured. Click "+ Add Mirror" to start.</td></tr>';
     return;
   }
-  body.innerHTML = mirrors.map(m => {
+  body.innerHTML = sorted.map(m => {
     const escOrig = m.originalPath.replace(/'/g, "\\'");
     const escDel = m.delegatedPath.replace(/'/g, "\\'");
     return `<tr>
